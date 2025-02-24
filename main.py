@@ -6,7 +6,7 @@ import pandas as pd
 from io import StringIO
 from bs4 import BeautifulSoup
 from datetime import datetime
-from utils import load_pickle, save_pickle
+from utils import load_pickle, save_pickle, Alpha
 from typing import List, Tuple, Dict
 
 def get_ndxt30_tickers():
@@ -125,6 +125,6 @@ if __name__ == "__main__":
     period_start = datetime(2015, 1, 1, tzinfo=pytz.utc)
     period_end = datetime.now(pytz.utc)
     tickers, ticker_dfs = get_ticker_dfs(start=period_start, end=period_end)
-    print(f"Retrieved {len(tickers)} tickers:")
-    for ticker, df in ticker_dfs.items():
-        print(f"{ticker}: {df.shape}")
+    print(ticker_dfs)
+    alpha = Alpha(insts=tickers, dfs = ticker_dfs, start=period_start, end=period_end)
+    alpha.run_simulation()
