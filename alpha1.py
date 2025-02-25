@@ -1,47 +1,10 @@
-import lzma
 import random
 import numpy as np
 import pandas as pd
-import dill as pickle
-from typing import List, Tuple, Dict
 
-def load_pickle(path: str) -> Tuple[List[str], Dict[str, pd.DataFrame]]:
-    try:
-        with lzma.open(path, "rb") as fp:
-            return pickle.load(fp)
-    except FileNotFoundError:
-        print(f"Pickle file {path} not found. Fetching fresh data.")
-        return None
-    except Exception as e:
-        print(f"Error loading pickle file: {e}")
-        return None
-    
-def save_pickle(path: str, obj: Tuple[List[str], Dict[str, pd.DataFrame]]) -> None:
-    try:
-        with lzma.open(path, "wb") as fp:
-            pickle.dump(obj, fp)
-        print(f"Saved data to {path}")
-    except Exception as e:
-        print(f"Error saving pickle file: {e}")
+from utils import get_pnl_stats
 
-def get_pnl_stats(date,prev,portfolio_df,insts,idx,dfs):
-    day_pnl = 0
-    nominal_ret = 0
-    for inst in insts:
-        units = portfolio_df.loc[idx-1, "{} units".format(inst)]
-        if units != 0:
-            delta = dfs[inst].loc[date, "close"] - dfs[inst].loc[prev, "close"]
-            inst_pnl = delta * units
-            day_pnl += inst_pnl
-            nominal_ret += portfolio_df.loc[idx-1, "{} w".format(inst)] * dfs[inst].loc[date, "ret"]
-    capital_ret = nominal_ret * portfolio_df.loc[idx-1, "leverage"]
-    portfolio_df.loc[idx,"capital"] = portfolio_df.loc[idx - 1, "capital"] + day_pnl
-    portfolio_df.loc[idx, "day_pnl"] = day_pnl
-    portfolio_df.loc[idx, "nominal_ret"] = nominal_ret
-    portfolio_df.loc[idx, "capital_ret"] = capital_ret
-    return day_pnl, capital_ret
-
-class Alpha():
+class Alpha1():
 
     def __init__(self, insts, dfs, start, end):
         self.insts = insts
@@ -58,16 +21,38 @@ class Alpha():
     
     def compute_meta_info(self, trade_range):
         # Normalize trade_range to date-only UTC
-        trade_range = pd.DatetimeIndex([d.date() for d in trade_range]).tz_localize("UTC")
+
+        op4s = []
         for inst in self.insts:
-            # Normalize the existing DataFrame index to date-only UTC
-            self.dfs[inst].index = pd.DatetimeIndex([d.date() for d in self.dfs[inst].index]).tz_localize("UTC")
+
+            trade_range = pd.DatetimeIndex([d.date() for d in trade_range]).tz_localize("UTC")
             df = pd.DataFrame(index=trade_range)
+
+            inst_df = self.dfs[inst].copy()
+            inst_df.index = pd.DatetimeIndex([d.date() for d in inst_df.index]).tz_localize("UTC")
+
+            op1 = inst_df.volume
+            op2 = (inst_df.close - inst_df.low) - (inst_df.high - inst_df.close)
+            op3 = inst_df.high - inst_df.close
+            op4 = op1 * op2 / op3.replace(0, np.nan)        # replace 0 with NaN to avoid inf
+
             self.dfs[inst] = df.join(self.dfs[inst]).fillna(method="ffill").fillna(method="bfill")
             self.dfs[inst]["ret"] = -1 * self.dfs[inst]["close"]/self.dfs[inst]["close"].shift(1)
+            self.dfs[inst]["op4"] = op4
+            op4s.append(self.dfs[inst]["op4"])
+
             sampled = self.dfs[inst]["close"] != self.dfs[inst]["close"].shift(1).fillna(method="bfill")
             eligible = sampled.rolling(5).apply(lambda x: int(np.any(x))).fillna(0)
             self.dfs[inst]["eligible"] = eligible.astype(int) & (self.dfs[inst]["close"] > 0).astype(int)
+        
+        temp_df = pd.concat(op4s, axis=1)
+        temp_df.columns = self.insts
+        temp_df = temp_df.replace(np.inf, 0).replace(-np.inf, 0)
+        zscore = lambda x: (x - np.mean(x))/np.std(x)
+        cszcre_df = temp_df.fillna(method="ffill").apply(zscore, axis=1)
+        for inst in self.insts:
+            self.dfs[inst]["alpha"] = cszcre_df[inst].rolling(12).mean() * -1
+            self.dfs[inst]["eligible"] = self.dfs[inst]["eligible"] & (~pd.isna(self.dfs[inst]["alpha"]))
         return
 
     def run_simulation(self):
@@ -94,7 +79,7 @@ class Alpha():
 
             alpha_scores = {}
             for inst in eligibles:
-                alpha_scores[inst] = random.uniform(0,1)
+                alpha_scores[inst] = self.dfs[inst].loc[date, "alpha"]
             alpha_scores = {k:v for k,v in sorted(alpha_scores.items(), key = lambda pair: pair[1])}
             alpha_long = list(alpha_scores.keys())[-int(len(eligibles)/4):]
             alpha_short = list(alpha_scores.keys())[:int(len(eligibles)/4)]
@@ -120,4 +105,4 @@ class Alpha():
             portfolio_df.loc[i, "nominal"] = nominal_tot
             portfolio_df.loc[i, "leverage"] = nominal_tot / portfolio_df.loc[i, "capital"]
             if i%100 == 0: print(portfolio_df.loc[i])
-            return portfolio_df
+        return portfolio_df
