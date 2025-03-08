@@ -8,6 +8,9 @@ class Alpha:
         self.start = start
         self.end = end
         self.name = name
+        for inst in self.insts:
+            if "eligible" not in self.dfs[inst].columns:
+                self.dfs[inst]["eligible"] = True
 
     def pre_compute(self, trade_range):
         pass
@@ -35,7 +38,6 @@ class Alpha1(Alpha):
             self.dfs[inst][self.name] = self.op4s[inst]
             temp.append(self.dfs[inst][self.name])
 
-        # Cross-sectional z-score
         temp_df = pd.concat(temp, axis=1)
         temp_df.columns = self.insts
         temp_df = temp_df.replace([np.inf, -np.inf], 0)
@@ -58,7 +60,7 @@ class Alpha2(Alpha):
 
     def post_compute(self, trade_range):
         for inst in self.insts:
-            self.dfs[inst][self.name] = self.alpha[inst]
+            self.dfs[inst][self.name] = self.alphas[inst]
             self.dfs[inst][self.name] = self.dfs[inst][self.name].fillna(method="ffill")
             self.dfs[inst]["eligible"] &= ~pd.isna(self.dfs[inst][self.name])
 
@@ -69,10 +71,18 @@ class Alpha3(Alpha):
     def pre_compute(self, trade_range):
         for inst in self.insts:
             inst_df = self.dfs[inst]
-            fast = np.where(inst_df.close.rolling(10).mean() > inst_df.close.rolling(50).mean())
-            medium = np.where(inst_df.close.rolling(20).mean() > inst_df.close.rolling(100).mean())
-            slow = np.where(inst_df.close.rolling(50).mean() > inst_df.close.rolling(200).mean())
-            alpha = fast + medium + slow        # Momentum score
+            # Compute moving averages
+            ma10 = inst_df.close.rolling(10).mean()
+            ma50 = inst_df.close.rolling(50).mean()
+            ma20 = inst_df.close.rolling(20).mean()
+            ma100 = inst_df.close.rolling(100).mean()
+            ma200 = inst_df.close.rolling(200).mean()
+            # Compute crossover signals as series
+            fast = (ma10 > ma50).astype(int)
+            medium = (ma20 > ma100).astype(int)
+            slow = (ma50 > ma200).astype(int)
+            # Sum the signals into alpha
+            alpha = fast + medium + slow
             self.dfs[inst][self.name] = alpha
 
     def post_compute(self, trade_range):
