@@ -28,6 +28,15 @@ def save_pickle(path: str, obj: Tuple[List[str], Dict[str, pd.DataFrame]]) -> No
     except Exception as e:
         print(f"Error saving pickle file: {e}")
 
+def get_sp500_data(start, end):
+    """Fetch S&P 500 data and compute 200-day moving average."""
+    sp500 = yfinance.Ticker("^GSPC")
+    df = sp500.history(start=start, end=end)
+    df.index = pd.to_datetime(df.index).normalize().tz_localize(None)
+    df = df[["Close"]].rename(columns={"Close": "close"})
+    df["ma200"] = df["close"].rolling(200).mean()
+    return df
+
 def get_ndxt30_tickers():
     try:
         headers = {"User-Agent": "Mozilla/5.0"}

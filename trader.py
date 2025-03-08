@@ -17,8 +17,12 @@ class Trader:
             print("Warning: No tickers or dataframes provided.")
             return
 
-        # Use date-only trade range, timezone-naive
-        trade_range = pd.date_range(self.start, self.end, freq='B').normalize().tz_localize(None)
+        all_dates = pd.Index([])
+        for df in self.dfs.values():
+            all_dates = all_dates.union(df.index)
+        all_dates = pd.DatetimeIndex(all_dates)
+        trade_range = all_dates[(all_dates >= self.start) & (all_dates <= self.end)]
+
         for alpha in self.alphas:
             alpha.pre_compute(trade_range)
             alpha.post_compute(trade_range)
@@ -28,30 +32,28 @@ class Trader:
             print("Cannot run backtest: No valid tickers or data.")
             return
 
-        # Use the union of all dates, already normalized and timezone-naive from utils.py
         all_dates = pd.Index([])
         for df in self.dfs.values():
             all_dates = all_dates.union(df.index)
-        # Convert to DatetimeIndex explicitly, should already be naive
         all_dates = pd.DatetimeIndex(all_dates)
         self.trade_dates = all_dates[(all_dates >= self.start) & (all_dates <= self.end)]
-        
-        print(f"Running backtest over {len(self.trade_dates)} dates.")
-        print(f"Sample trade date: {self.trade_dates[0] if not self.trade_dates.empty else 'None'}")
-        print(f"Trade dates dtype: {self.trade_dates.dtype}")
 
+        print(f"Running backtest over {len(self.trade_dates)} dates.")
         for date in self.trade_dates:
-            print(f"Processing date: {date}")
             available_tickers = [ticker for ticker in self.tickers if date in self.dfs[ticker].index]
             if not available_tickers:
-                print(f"No tickers available for {date}, skipping.")
                 continue
             equity = self.cash + sum(
                 self.portfolio.get(ticker, 0) * self.dfs[ticker].loc[date, 'close']
                 for ticker in available_tickers
             )
+            if pd.isna(equity):
+                print(f"Warning: Equity is NaN on {date}")
+                equity = self.equity[-1] if self.equity else 100000  # Fallback to last valid or initial
             self.equity.append(equity)
             signals = self.generate_signals(date)
+            if not signals:
+                print(f"No signals generated for {date}")
             self.manage_portfolio(signals, date, equity)
 
     def generate_signals(self, date):
@@ -61,7 +63,8 @@ class Trader:
             values = {}
             for ticker in self.tickers:
                 if date in self.dfs[ticker].index and self.dfs[ticker].loc[date, 'eligible']:
-                    values[ticker] = self.dfs[ticker].loc[date, alpha_name]
+                    val = self.dfs[ticker].loc[date, alpha_name]
+                    values[ticker] = val if not pd.isna(val) else 0
             alpha_values[alpha_name] = values
 
         standardized = {}
@@ -139,6 +142,8 @@ class Trader:
             return {"error": "Insufficient equity data for stats"}
 
         equity_series = pd.Series(self.equity, index=self.trade_dates[:len(self.equity)])
+        if equity_series.isna().all():
+            return {"error": "Equity series is all NaN"}
         daily_returns = equity_series.pct_change().dropna()
         cumulative_returns = (equity_series / equity_series.iloc[0] - 1) * 100
 
@@ -152,7 +157,7 @@ class Trader:
         drawdowns = (equity_series - rolling_max) / rolling_max
         max_drawdown = drawdowns.min() * 100
 
-        stats = {
+        return {
             "Total Return (%)": cumulative_returns.iloc[-1],
             "Annualized Return (%)": annualized_return * 100,
             "Annualized Volatility (%)": annualized_volatility * 100,
@@ -162,4 +167,3 @@ class Trader:
             "Cumulative Returns": cumulative_returns,
             "Equity Curve": equity_series
         }
-        return stats
