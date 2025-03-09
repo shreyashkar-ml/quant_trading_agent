@@ -1,7 +1,7 @@
 import pandas as pd
 from datetime import datetime
 from utils import get_ticker_dfs, get_sp500_data
-from alphas import Alpha1, Alpha2, Alpha3, RegimeSwitchingAlpha
+from alphas import MeanReversalAlpha, PriceRatioMeanReversalAlpha, MomentumAlpha, AdaptiveRegimeAlpha
 from trader import Trader
 
 start = pd.Timestamp(datetime(2015, 1, 1)).normalize()
@@ -13,10 +13,10 @@ tickers, dfs = get_ticker_dfs(start, end)
 if not tickers or not dfs:
     print("No data available to proceed with backtest.")
 else:
-    alpha1 = Alpha1(tickers, dfs, start, end, name="alpha1")
-    alpha2 = Alpha2(tickers, dfs, start, end, name="alpha2")
-    alpha3 = Alpha3(tickers, dfs, start, end, name="alpha3")
-    regime_alpha = RegimeSwitchingAlpha(tickers, dfs, start, end, sp500_df, name="regime_switching")
+    alpha1 = MeanReversalAlpha(tickers, dfs, start, end, name="alpha1")
+    alpha2 = PriceRatioMeanReversalAlpha(tickers, dfs, start, end, name="alpha2")
+    alpha3 = MomentumAlpha(tickers, dfs, start, end, name="alpha3")
+    regime_alpha = AdaptiveRegimeAlpha(tickers, dfs, start, end, sp500_df, name="regime_switching")
 
     strategies = {
         "Alpha1": [alpha1],

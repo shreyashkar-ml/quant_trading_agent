@@ -28,10 +28,13 @@ def save_pickle(path: str, obj: Tuple[List[str], Dict[str, pd.DataFrame]]) -> No
     except Exception as e:
         print(f"Error saving pickle file: {e}")
 
-def get_sp500_data(start, end):
+def get_sp500_data(start, end, granularity = "1d"):
     """Fetch S&P 500 data and compute 200-day moving average."""
     sp500 = yfinance.Ticker("^GSPC")
-    df = sp500.history(start=start, end=end)
+    df = sp500.history(start=start, 
+                       end=end, 
+                       interval=granularity,
+                       auto_adjust=True)
     df.index = pd.to_datetime(df.index).normalize().tz_localize(None)
     df = df[["Close"]].rename(columns={"Close": "close"})
     df["ma200"] = df["close"].rolling(200).mean()
@@ -151,3 +154,19 @@ def get_ticker_dfs(start: datetime, end: datetime) -> Tuple[List[str], Dict[str,
         print("No valid data to save.")
 
     return tickers, ticker_dfs
+
+def get_market_state(date, sp500_df):
+    if date not in sp500_df.index:
+        date = sp500_df.index[-1]
+
+    close = sp500_df.loc[date, "close"]
+    ma200 = sp500_df.loc[date, "ma200"]
+    if pd.isna(ma200):
+        return "Unknown"
+    above_ma = "above" if close > ma200 else "below"
+    three_months_ago = date - pd.DateOffset(months=3)
+    if three_months_ago in sp500_df.index:
+        ret_3m = (close / sp500_df.loc[three_months_ago, 'close'] - 1) * 100
+    else:
+        ret_3m = "unknown"
+    return f"The S&P 500 is {above_ma} its 200-day moving average, with a 3-month return of {ret_3m:.2f}%."

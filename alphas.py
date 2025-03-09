@@ -15,7 +15,7 @@ class Alpha:
     def post_compute(self, trade_range):
         pass
 
-class Alpha1(Alpha):
+class MeanReversalAlpha(Alpha):
     def __init__(self, insts, dfs, start, end, name="alpha1"):
         super().__init__(insts, dfs, start, end, name)
 
@@ -39,7 +39,7 @@ class Alpha1(Alpha):
             self.dfs[inst][self.name] = cszcre_df[inst].rolling(12).mean() * -1
             self.dfs[inst][self.name] = self.dfs[inst][self.name].fillna(0)  # Ensure no NaN
 
-class Alpha2(Alpha):
+class PriceRatioMeanReversalAlpha(Alpha):
     def __init__(self, insts, dfs, start, end, name="alpha2"):
         super().__init__(insts, dfs, start, end, name)
 
@@ -49,7 +49,7 @@ class Alpha2(Alpha):
             alpha = -1 * (1 - (df['open'] / df['close'])).rolling(12).mean()
             self.dfs[inst][self.name] = alpha.fillna(0)  # Ensure no NaN
 
-class Alpha3(Alpha):
+class MomentumAlpha(Alpha):
     def __init__(self, insts, dfs, start, end, name="alpha3"):
         super().__init__(insts, dfs, start, end, name)
 
@@ -61,13 +61,13 @@ class Alpha3(Alpha):
             slow = (df['close'].rolling(50).mean() > df['close'].rolling(200).mean()).astype(int)
             self.dfs[inst][self.name] = (fast + medium + slow).fillna(0)  # Ensure no NaN
 
-class RegimeSwitchingAlpha(Alpha):
+class AdaptiveRegimeAlpha(Alpha):
     def __init__(self, insts, dfs, start, end, sp500_df, name="regime_switching"):
         super().__init__(insts, dfs, start, end, name)
         self.sp500_df = sp500_df.reindex(dfs[list(dfs.keys())[0]].index, method="ffill")  # Align with ticker data
-        self.alpha1 = Alpha1(insts, dfs, start, end)
-        self.alpha2 = Alpha2(insts, dfs, start, end)
-        self.alpha3 = Alpha3(insts, dfs, start, end)
+        self.alpha1 = MeanReversalAlpha(insts, dfs, start, end)
+        self.alpha2 = PriceRatioMeanReversalAlpha(insts, dfs, start, end)
+        self.alpha3 = MomentumAlpha(insts, dfs, start, end)
 
     def pre_compute(self, trade_range):
         self.alpha1.pre_compute(trade_range)
