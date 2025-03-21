@@ -69,6 +69,7 @@ else:
         all_strategy_results.append(strategy_dict)
 
 # print(all_strategy_results)
+# all_strategy_results --> required for front-end output integration
 # Example output: front-end should be suited to this structure
 # [
 #     {'strategy_name': 'MeanReversalAlpha', 
