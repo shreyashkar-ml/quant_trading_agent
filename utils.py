@@ -9,6 +9,21 @@ from bs4 import BeautifulSoup
 import requests
 from io import StringIO
 
+def fetch_date_range(start_date_str, end_date_str):
+    date_format = "%Y-%m-%d"
+
+    try:
+        start_date = datetime.strptime(start_date_str, date_format)
+        end_date = datetime.strptime(end_date_str, date_format)
+
+        if end_date < start_date:
+            raise ValueError("End date cannot be earlier than start date.")
+        
+        return start_date, end_date
+    
+    except ValueError as e:
+        return f"Error: {e}"
+
 def load_pickle(path: str) -> Tuple[List[str], Dict[str, pd.DataFrame]]:
     try:
         with lzma.open(path, "rb") as fp:
@@ -125,7 +140,7 @@ def get_histories(tickers: List[str], period_starts: List[datetime], period_ends
 
     return valid_tickers, valid_dfs
 
-def get_ticker_dfs(start: datetime, end: datetime) -> Tuple[List[str], Dict[str, pd.DataFrame]]:
+def get_ticker_dfs(start: datetime, end: datetime, user_tickers = None) -> Tuple[List[str], Dict[str, pd.DataFrame], List[str]]:
     data = load_pickle("dataset.obj")
     if data is not None:
         tickers, ticker_dfs = data
@@ -138,7 +153,10 @@ def get_ticker_dfs(start: datetime, end: datetime) -> Tuple[List[str], Dict[str,
         return tickers, ticker_dfs
 
     print("Fetching fresh data...")
-    tickers = get_ndxt30_tickers()
+    if user_tickers is not None:
+        tickers = user_tickers
+    else:
+        tickers = get_ndxt30_tickers()
     if not tickers:
         print("No tickers fetched. Exiting.")
         return [], {}
